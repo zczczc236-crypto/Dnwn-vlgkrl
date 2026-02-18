@@ -3,38 +3,192 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Space Survivor: Universe Ultimate</title>
+    <title>Space Survivor: Universe Pro</title>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; user-select: none; }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; touch-action: none; user-select: none; }
         canvas { display: block; }
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
-        .panel { position: absolute; pointer-events: all; background: rgba(5, 5, 25, 0.95); border: 2px solid #00f2ff; border-radius: 15px; padding: 20px; text-align: center; box-sizing: border-box; }
-        #menu-ui { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 400px; }
-        #skill-ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 200px; height: 10px; background: #222; border: 1px solid #fff; }
-        #skill-fill { width: 0%; height: 100%; background: #ff00ff; transition: 0.1s; }
+        .panel { position: absolute; pointer-events: all; background: rgba(10, 10, 30, 0.95); border: 2px solid #00f2ff; border-radius: 15px; padding: 25px; text-align: center; box-sizing: border-box; }
+        #menu-ui { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 380px; }
         .char-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 15px 0; }
-        .char-card { padding: 10px; border: 1px solid #444; cursor: pointer; border-radius: 8px; font-size: 0.7em; }
-        .char-card.selected { border-color: #ff00ff; background: rgba(255, 0, 255, 0.2); }
-        .btn { background: linear-gradient(45deg, #00f2ff, #0066ff); color: #fff; border: none; padding: 15px; font-weight: bold; cursor: pointer; width: 100%; border-radius: 10px; font-size: 1.1em; }
-        .shop-item { background: rgba(255,255,255,0.05); margin: 5px 0; padding: 8px; border-radius: 5px; font-size: 0.8em; cursor: pointer; border: 1px solid #333; }
-        #stats-bar { position: absolute; top: 10px; left: 10px; font-size: 14px; }
-        .rank-list { text-align: left; background: #111; padding: 10px; border-radius: 5px; margin-top: 10px; font-size: 0.8em; max-height: 100px; overflow-y: auto; }
+        .char-card { padding: 10px; border: 1px solid #444; cursor: pointer; border-radius: 8px; font-size: 0.8em; transition: 0.2s; }
+        .char-card.selected { border-color: #ff00ff; background: rgba(255, 0, 255, 0.2); box-shadow: 0 0 10px #ff00ff; }
+        .btn { background: #00f2ff; color: #000; border: none; padding: 15px; font-weight: bold; cursor: pointer; width: 100%; border-radius: 10px; font-size: 1.2em; margin-top: 10px; }
+        #stats-bar { position: absolute; top: 15px; left: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div id="ui-layer">
         <div id="stats-bar">
-            <span style="color:#00f2ff">SCORE: <span id="score">0</span></span><br>
-            <span style="color:#ffd700">GOLD: <span id="gold-display">0</span></span>
+            <div style="color:#00f2ff">SCORE: <span id="score">0</span></div>
+            <div style="color:#ffd700">GOLD: <span id="gold-display">0</span></div>
         </div>
 
         <div id="menu-ui" class="panel">
-            <h2 style="color:#00f2ff; margin:0 0 10px 0;">UNIVERSE HANGAR</h2>
-            
+            <h2 style="color:#00f2ff; margin-top:0;">READY TO LAUNCH</h2>
             <div class="char-grid">
-                <div id="char-balance" class="char-card selected" onclick="selectChar('balance')">
-                    <strong>Balanced</strong><br>SPD: 5/ATK: 5
+                <div id="char-balance" class="char-card selected" onclick="selectChar('balance')"><strong>BAL</strong></div>
+                <div id="char-interceptor" class="char-card" onclick="selectChar('interceptor')"><strong>SPD</strong></div>
+                <div id="char-tanker" class="char-card" onclick="selectChar('tanker')"><strong>HP</strong></div>
+            </div>
+            <div style="margin-bottom: 10px; font-size: 0.9em; color: #aaa;">Best Score: <span id="best-score">0</span></div>
+            <button class="btn" onclick="startGame()">START GAME</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let saveData = JSON.parse(localStorage.getItem('spaceProData')) || {
+            gold: 0, bestScore: 0, selectedId: 'balance'
+        };
+
+        const save = () => localStorage.setItem('spaceProData', JSON.stringify(saveData));
+
+        let gameActive = false, score = 0, frame = 0;
+        let bullets = [], enemies = [];
+        const player = { x: 0, y: 0, targetX: 0, targetY: 0, size: 15 };
+
+        // 소리 재생용 오디오 컨텍스트
+        let audioCtx;
+
+        function playSound(freq, type, duration, vol) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.x = player.targetX = canvas.width / 2;
+            player.y = player.targetY = canvas.height * 0.8;
+            document.getElementById('gold-display').innerText = saveData.gold;
+            document.getElementById('best-score').innerText = saveData.bestScore;
+        }
+
+        window.selectChar = (id) => {
+            saveData.selectedId = id;
+            document.querySelectorAll('.char-card').forEach(c => c.classList.remove('selected'));
+            document.getElementById('char-' + id).classList.add('selected');
+            save();
+        };
+
+        window.startGame = () => {
+            // 브라우저 소리 잠금 해제
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            document.getElementById('menu-ui').style.display = 'none';
+            score = 0; frame = 0; bullets = []; enemies = [];
+            gameActive = true;
+            playSound(440, 'sine', 0.2, 0.1); // 시작음
+            loop();
+        };
+
+        const updateTarget = (clientX, clientY, isTouch) => {
+            player.targetX = clientX;
+            // 모바일은 손가락 위 60px 지점에 위치 (가려짐 방지)
+            player.targetY = isTouch ? clientY - 60 : clientY;
+        };
+
+        window.addEventListener('mousemove', (e) => updateTarget(e.clientX, e.clientY, false));
+        window.addEventListener('touchmove', (e) => {
+            if(gameActive) e.preventDefault();
+            updateTarget(e.touches[0].clientX, e.touches[0].clientY, true);
+        }, { passive: false });
+
+        function loop() {
+            if (!gameActive) return;
+            frame++;
+
+            // 배경 클리어
+            ctx.fillStyle = '#00040a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 움직임 개선 (Lerp 속도 향상: 0.1 -> 0.3)
+            player.x += (player.targetX - player.x) * 0.3;
+            player.y += (player.targetY - player.y) * 0.3;
+
+            // 플레이어 그리기
+            ctx.fillStyle = '#00f2ff';
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y - 15);
+            ctx.lineTo(player.x - 12, player.y + 12);
+            ctx.lineTo(player.x + 12, player.y + 12);
+            ctx.fill();
+
+            // 총알 발사
+            if (frame % 8 === 0) {
+                bullets.push({x: player.x, y: player.y - 15});
+                playSound(800, 'sine', 0.05, 0.02);
+            }
+
+            bullets.forEach((b, bi) => {
+                b.y -= 15;
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(b.x - 1, b.y, 2, 10);
+                if (b.y < 0) bullets.splice(bi, 1);
+            });
+
+            // 적 생성
+            if (frame % 25 === 0) {
+                enemies.push({x: Math.random() * canvas.width, y: -20, s: 15 + Math.random()*15});
+            }
+
+            enemies.forEach((e, ei) => {
+                e.y += 4 + (score/5000);
+                ctx.fillStyle = '#ff3366';
+                ctx.beginPath(); ctx.arc(e.x, e.y, e.s, 0, Math.PI*2); ctx.fill();
+
+                // 총알 충돌
+                bullets.forEach((b, bi) => {
+                    if (Math.hypot(b.x - e.x, b.y - e.y) < e.s) {
+                        enemies.splice(ei, 1);
+                        bullets.splice(bi, 1);
+                        score += 100;
+                        saveData.gold += 1;
+                        playSound(150, 'sawtooth', 0.1, 0.05); // 파괴음
+                    }
+                });
+
+                // 플레이어 충돌
+                if (Math.hypot(player.x - e.x, player.y - e.y) < e.s + 10) {
+                    gameOver();
+                }
+                
+                if (e.y > canvas.height) enemies.splice(ei, 1);
+            });
+
+            document.getElementById('score').innerText = score;
+            document.getElementById('gold-display').innerText = saveData.gold;
+            requestAnimationFrame(loop);
+        }
+
+        function gameOver() {
+            gameActive = false;
+            playSound(100, 'square', 0.5, 0.2); // 패배음
+            if (score > saveData.bestScore) saveData.bestScore = score;
+            save();
+            alert("GAME OVER! Score: " + score);
+            location.reload();
+        }
+
+        window.addEventListener('resize', init);
+        window.onload = init;
+    </script>
+</body>
+</html>                    <strong>Balanced</strong><br>SPD: 5/ATK: 5
                 </div>
                 <div id="char-interceptor" class="char-card" onclick="selectChar('interceptor')">
                     <strong>Swift</strong><br>SPD: 9/ATK: 3
