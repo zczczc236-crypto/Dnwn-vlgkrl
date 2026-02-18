@@ -2,44 +2,47 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Space Survivor: Universe</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Space Survivor: Universe Mobile</title>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
-        canvas { display: block; cursor: none; }
+        body { margin: 0; background: #000; color: #fff; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; }
+        canvas { display: block; }
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
-        .panel { position: absolute; pointer-events: all; background: rgba(5, 5, 20, 0.9); border: 2px solid #00f2ff; border-radius: 15px; padding: 25px; text-align: center; }
-        #menu-ui { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; }
-        .char-card { display: inline-block; width: 100px; padding: 10px; border: 1px solid #444; margin: 5px; cursor: pointer; transition: 0.3s; }
-        .char-card:hover, .char-card.selected { border-color: #ff00ff; background: rgba(255, 0, 255, 0.1); }
-        .btn { background: #00f2ff; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; border-radius: 5px; }
-        .stats { font-size: 0.8em; color: #aaa; text-align: left; margin: 10px 0; }
+        .panel { position: absolute; pointer-events: all; background: rgba(5, 5, 25, 0.95); border: 2px solid #00f2ff; border-radius: 15px; padding: 20px; text-align: center; box-sizing: border-box; }
+        #menu-ui { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 400px; }
+        .char-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 15px 0; }
+        .char-card { padding: 10px; border: 1px solid #444; cursor: pointer; border-radius: 8px; font-size: 0.8em; }
+        .char-card.selected { border-color: #ff00ff; background: rgba(255, 0, 255, 0.2); }
+        .btn { background: linear-gradient(45deg, #00f2ff, #0066ff); color: #fff; border: none; padding: 15px; font-weight: bold; cursor: pointer; width: 100%; border-radius: 10px; font-size: 1.1em; }
+        #stats-bar { position: absolute; top: 10px; left: 10px; font-size: 14px; line-height: 1.4; }
     </style>
 </head>
 <body>
 
     <div id="ui-layer">
-        <div style="padding: 20px;">
-            <h2 style="margin:0; color:#00f2ff;">SCORE: <span id="score">0</span></h2>
-            <div id="multi-info" style="font-size: 0.8em; color: #ff00ff;">GHOST ACTIVE: <span id="ghost-score">0</span></div>
+        <div id="stats-bar">
+            <span style="color:#00f2ff">SCORE: <span id="score">0</span></span><br>
+            <span style="color:#ffd700">GOLD: <span id="gold-display">0</span></span>
         </div>
 
         <div id="menu-ui" class="panel">
-            <h1 style="color:#00f2ff; margin-top:0;">SELECT SHIP</h1>
-            <div id="char-selection">
+            <h2 style="color:#00f2ff; margin:0 0 15px 0;">SHIP HANGAR</h2>
+            <div class="char-grid">
                 <div class="char-card selected" onclick="selectChar('balance', this)">
-                    <strong>Balance</strong><div class="stats">SPD: 5<br>ATK: 5</div>
+                    <strong>Balanced</strong><br><small>All-Round</small>
                 </div>
                 <div class="char-card" onclick="selectChar('interceptor', this)">
-                    <strong>Swift</strong><div class="stats">SPD: 8<br>ATK: 3</div>
+                    <strong>Swift</strong><br><small>Fast/Glass</small>
                 </div>
                 <div class="char-card" onclick="selectChar('tanker', this)">
-                    <strong>Titan</strong><div class="stats">SPD: 3<br>ATK: 8</div>
+                    <strong>Titan</strong><br><small>Slow/Shield</small>
                 </div>
             </div>
-            <div id="shop-info" style="margin: 15px 0; font-size: 0.9em; border-top: 1px solid #333; padding-top: 10px;">
-                TOTAL GOLD: <span id="gold-val" style="color:#ffd700">0</span>
+            <div style="font-size: 0.9em; margin-bottom: 15px;">
+                BEST: <span id="best-score" style="color:#ff00ff">0</span>
             </div>
             <button class="btn" onclick="startGame()">START MISSION</button>
+            <p style="font-size: 10px; color: #666; margin-top: 10px;">PC: Mouse | Mobile: Touch & Drag</p>
         </div>
     </div>
 
@@ -49,27 +52,28 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
-        let saveData = JSON.parse(localStorage.getItem('spaceUnivData')) || {
-            gold: 0, bestScore: 0, ghostPath: [], selectedId: 'balance'
+        let saveData = JSON.parse(localStorage.getItem('spaceCrossData')) || {
+            gold: 0, bestScore: 0, selectedId: 'balance'
         };
-        const save = () => localStorage.setItem('spaceUnivData', JSON.stringify(saveData));
+        const save = () => localStorage.setItem('spaceCrossData', JSON.stringify(saveData));
 
         let gameActive = false, score = 0, frame = 0;
-        let bullets = [], enemies = [], currentPath = [];
-        const player = { x: 0, y: 0, size: 15, type: 'balance' };
+        let bullets = [], enemies = [], items = [];
+        const player = { x: 0, y: 0, targetX: 0, targetY: 0, size: 15, type: 'balance', shield: false };
 
-        // 캐릭터 스펙 정의
         const chars = {
-            balance: { speed: 1, bulletColor: '#00f2ff', shield: false },
-            interceptor: { speed: 1.5, bulletColor: '#ff00ff', shield: false },
-            tanker: { speed: 0.7, bulletColor: '#ff4d4d', shield: true }
+            balance: { speed: 0.2, color: '#00f2ff', shield: false },
+            interceptor: { speed: 0.35, color: '#ff00ff', shield: false },
+            tanker: { speed: 0.1, color: '#ff4d4d', shield: true }
         };
 
         function init() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            document.getElementById('gold-val').innerText = saveData.gold;
-            document.getElementById('ghost-score').innerText = saveData.bestScore;
+            player.x = player.targetX = canvas.width / 2;
+            player.y = player.targetY = canvas.height * 0.8;
+            document.getElementById('gold-display').innerText = saveData.gold;
+            document.getElementById('best-score').innerText = saveData.bestScore;
         }
 
         window.selectChar = (id, el) => {
@@ -81,33 +85,41 @@
 
         window.startGame = () => {
             document.getElementById('menu-ui').style.display = 'none';
-            score = 0; frame = 0; bullets = []; enemies = []; currentPath = [];
+            score = 0; frame = 0; bullets = []; enemies = []; items = [];
             player.type = saveData.selectedId;
             player.shield = chars[player.type].shield;
             gameActive = true;
             loop();
         };
 
+        // 모바일 & PC 통합 입력 처리
+        const handleInput = (e) => {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            player.targetX = clientX;
+            player.targetY = clientY - (e.touches ? 50 : 0); // 모바일은 손가락 위를 조준
+        };
+
+        window.addEventListener('mousemove', handleInput);
+        window.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handleInput(e);
+        }, { passive: false });
+
         function loop() {
             if (!gameActive) return;
             frame++;
-            ctx.fillStyle = 'rgba(0, 0, 10, 0.4)';
+            ctx.fillStyle = '#00040a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 경로 기록 (유령용)
-            currentPath.push({x: player.x, y: player.y});
+            // 부드러운 이동 (Lerp)
+            const speedBase = chars[player.type].speed;
+            player.x += (player.targetX - player.x) * speedBase;
+            player.y += (player.targetY - player.y) * speedBase;
 
-            // 유령 그리기 (멀티플레이어 대용)
-            if (saveData.ghostPath && saveData.ghostPath[frame]) {
-                const gp = saveData.ghostPath[frame];
-                ctx.globalAlpha = 0.3;
-                ctx.fillStyle = '#fff';
-                ctx.beginPath(); ctx.arc(gp.x, gp.y, 10, 0, Math.PI*2); ctx.fill();
-                ctx.globalAlpha = 1.0;
-            }
-
-            // 플레이어 그리기 & 엔진 불꽃
-            ctx.fillStyle = chars[player.type].bulletColor;
+            // 플레이어 렌더링
+            ctx.shadowBlur = 10; ctx.shadowColor = chars[player.type].color;
+            ctx.fillStyle = chars[player.type].color;
             ctx.beginPath();
             ctx.moveTo(player.x, player.y - 15);
             ctx.lineTo(player.x - 12, player.y + 12);
@@ -115,42 +127,46 @@
             ctx.fill();
             if (player.shield) {
                 ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.arc(player.x, player.y, 20, 0, Math.PI*2); ctx.stroke();
+                ctx.beginPath(); ctx.arc(player.x, player.y, 22, 0, Math.PI*2); ctx.stroke();
             }
+            ctx.shadowBlur = 0;
 
-            // 사격
-            if (frame % 10 === 0) {
-                bullets.push({x: player.x, y: player.y, v: -15, c: chars[player.type].bulletColor});
+            // 자동 사격
+            if (frame % 8 === 0) {
+                bullets.push({x: player.x, y: player.y - 15});
             }
 
             bullets.forEach((b, bi) => {
-                b.y += b.v;
-                ctx.fillStyle = b.c;
-                ctx.fillRect(b.x - 2, b.y, 4, 12);
+                b.y -= 12;
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(b.x - 1.5, b.y, 3, 10);
                 if (b.y < 0) bullets.splice(bi, 1);
             });
 
-            // 적 생성 및 충돌
-            if (frame % 30 === 0) {
-                enemies.push({x: Math.random() * canvas.width, y: -30, s: 20, h: 2});
+            // 적 생성 및 로직
+            if (frame % Math.max(10, 35 - Math.floor(score/1000)) === 0) {
+                enemies.push({x: Math.random() * canvas.width, y: -20, s: 15 + Math.random()*15});
             }
 
             enemies.forEach((e, ei) => {
-                e.y += 4 + (score/5000);
-                ctx.fillStyle = '#555';
+                e.y += 3 + (score/3000);
+                ctx.fillStyle = '#ff3366';
                 ctx.beginPath(); ctx.arc(e.x, e.y, e.s, 0, Math.PI*2); ctx.fill();
 
-                bullets.forEach((b, bi) => {
-                    if (Math.hypot(b.x - e.x, b.y - e.y) < e.s) {
-                        e.h--; bullets.splice(bi, 1);
-                        if (e.h <= 0) { enemies.splice(ei, 1); score += 100; saveData.gold += 5; }
-                    }
-                });
-
-                if (Math.hypot(player.x - e.x, player.y - e.y) < e.s + player.size) {
+                // 충돌 체크
+                const dist = Math.hypot(player.x - e.x, player.y - e.y);
+                if (dist < e.s + player.size) {
                     if (player.shield) { player.shield = false; enemies.splice(ei, 1); }
                     else gameOver();
                 }
+
+                bullets.forEach((b, bi) => {
+                    if (Math.hypot(b.x - e.x, b.y - e.y) < e.s) {
+                        enemies.splice(ei, 1); bullets.splice(bi, 1);
+                        score += 50; saveData.gold += 1;
+                    }
+                });
+                if (e.y > canvas.height) enemies.splice(ei, 1);
             });
 
             document.getElementById('score').innerText = score;
@@ -159,23 +175,13 @@
 
         function gameOver() {
             gameActive = false;
-            if (score > saveData.bestScore) {
-                saveData.bestScore = score;
-                saveData.ghostPath = currentPath;
-            }
+            if (score > saveData.bestScore) saveData.bestScore = score;
             save();
-            alert("Mission Over. Score: " + score);
-            init();
-            document.getElementById('menu-ui').style.display = 'block';
+            alert("Mission Failed! Gold Earned: " + Math.floor(score/50));
+            location.reload();
         }
 
-        window.addEventListener('mousemove', (e) => {
-            const speed = chars[player.type].speed;
-            // 부드러운 이동 보간
-            player.x += (e.clientX - player.x) * 0.2 * speed;
-            player.y += (e.clientY - player.y) * 0.2 * speed;
-        });
-
+        window.addEventListener('resize', init);
         window.onload = init;
     </script>
 </body>
